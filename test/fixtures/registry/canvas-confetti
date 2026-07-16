@@ -1,0 +1,17 @@
+{
+  "name": "canvas-confetti",
+  "dist-tags": {
+    "latest": "1.9.3",
+    "beta": "1.9.4-beta.0"
+  },
+  "versions": {
+    "1.9.3": {
+      "name": "canvas-confetti",
+      "version": "1.9.3"
+    },
+    "1.9.4-beta.0": {
+      "name": "canvas-confetti",
+      "version": "1.9.4-beta.0"
+    }
+  }
+}

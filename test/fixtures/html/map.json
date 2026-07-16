@@ -1,0 +1,6 @@
+{
+  "imports": {
+    "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.3",
+    "canvas-confetti/": "https://esm.sh/canvas-confetti@1.9.3/"
+  }
+}

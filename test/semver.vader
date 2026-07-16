@@ -1,0 +1,113 @@
+Execute (Semver Parse - table-driven tests):
+  let g:parse_cases = [
+    \ ['1.2.3', {'major': 1, 'minor': 2, 'patch': 3, 'prerelease': [], 'valid': 1}],
+    \ ['v1.2.3', {'major': 1, 'minor': 2, 'patch': 3, 'prerelease': [], 'valid': 1}],
+    \ ['0.0.0', {'major': 0, 'minor': 0, 'patch': 0, 'prerelease': [], 'valid': 1}],
+    \ ['10.20.30', {'major': 10, 'minor': 20, 'patch': 30, 'prerelease': [], 'valid': 1}],
+    \ ['1.0.0-alpha', {'major': 1, 'minor': 0, 'patch': 0, 'prerelease': ['alpha'], 'valid': 1}],
+    \ ['1.0.0-alpha.1', {'major': 1, 'minor': 0, 'patch': 0, 'prerelease': ['alpha', 1], 'valid': 1}],
+    \ ['1.0.0-0.3.7', {'major': 1, 'minor': 0, 'patch': 0, 'prerelease': [0, 3, 7], 'valid': 1}],
+    \ ['1.0.0-x.7.z.92', {'major': 1, 'minor': 0, 'patch': 0, 'prerelease': ['x', 7, 'z', 92], 'valid': 1}],
+    \ ['1.2.3-beta.2+build.123', {'major': 1, 'minor': 2, 'patch': 3, 'prerelease': ['beta', 2], 'valid': 1}],
+    \ ['invalid', {'valid': 0}],
+    \ ['1.2', {'valid': 0}],
+    \ ['1.2.3.4', {'valid': 0}],
+    \ ['a.b.c', {'valid': 0}],
+    \ ['1.2.3-', {'valid': 0}],
+    \ ['vv1.2.3', {'valid': 0}],
+    \ ['01.2.3', {'valid': 0}],
+    \ ['1.0.0-alpha..1', {'valid': 0}]
+  \ ]
+
+  for [g:input, g:expected] in g:parse_cases
+    let g:res = importmap#semver#Parse(g:input)
+    if g:expected.valid
+      AssertEqual 1, g:res.valid, 'Expected valid for ' . g:input
+      AssertEqual g:expected.major, g:res.major, 'Major mismatch for ' . g:input
+      AssertEqual g:expected.minor, g:res.minor, 'Minor mismatch for ' . g:input
+      AssertEqual g:expected.patch, g:res.patch, 'Patch mismatch for ' . g:input
+      AssertEqual g:expected.prerelease, g:res.prerelease, 'Prerelease mismatch for ' . g:input
+    else
+      AssertEqual 0, g:res.valid, 'Expected invalid for ' . g:input
+    endif
+  endfor
+
+Execute (Semver Cmp - table-driven tests):
+  let g:cmp_cases = [
+    \ ['1.0.0', '1.0.0', 0],
+    \ ['v1.0.0', '1.0.0', 0],
+    \ ['2.0.0', '1.0.0', 1],
+    \ ['1.0.0', '2.0.0', -1],
+    \ ['1.2.0', '1.1.0', 1],
+    \ ['1.1.0', '1.2.0', -1],
+    \ ['1.1.2', '1.1.1', 1],
+    \ ['1.1.1', '1.1.2', -1],
+    \ ['1.0.0-alpha', '1.0.0', -1],
+    \ ['1.0.0', '1.0.0-alpha', 1],
+    \ ['1.0.0-alpha', '1.0.0-alpha.1', -1],
+    \ ['1.0.0-alpha.1', '1.0.0-alpha', 1],
+    \ ['1.0.0-alpha.1', '1.0.0-alpha.beta', -1],
+    \ ['1.0.0-alpha.beta', '1.0.0-beta', -1],
+    \ ['1.0.0-beta', '1.0.0-beta.2', -1],
+    \ ['1.0.0-beta.2', '1.0.0-beta.11', -1],
+    \ ['1.0.0-beta.11', '1.0.0-rc.1', -1],
+    \ ['1.0.0-rc.1', '1.0.0', -1],
+    \ ['1.0.0-alpha.123', '1.0.0-alpha.123', 0],
+    \ ['1.0.0-1', '1.0.0-alpha', -1],
+    \ ['1.0.0-alpha.1', '1.0.0-alpha.1.a', -1]
+  \ ]
+
+  for [g:a, g:b, g:expected] in g:cmp_cases
+    AssertEqual g:expected, importmap#semver#Cmp(g:a, g:b), 'Cmp(' . g:a . ', ' . g:b . ')'
+  endfor
+
+Execute (Semver MaxSatisfying - table-driven tests):
+  let g:versions_basic = ['1.0.0', '1.1.0', '1.1.2', '1.2.0', '2.0.0', '2.1.0-alpha.1']
+  let g:satisfy_cases = [
+    \ [g:versions_basic, '1.1.2', '1.1.2'],
+    \ [g:versions_basic, 'v1.1.2', '1.1.2'],
+    \ [g:versions_basic, '^1.0.0', '1.2.0'],
+    \ [g:versions_basic, '^1.1.0', '1.2.0'],
+    \ [g:versions_basic, '^1.1', '1.2.0'],
+    \ [g:versions_basic, '^1', '1.2.0'],
+    \ [g:versions_basic, '~1.1.0', '1.1.2'],
+    \ [g:versions_basic, '~1.1', '1.1.2'],
+    \ [g:versions_basic, '1', '1.2.0'],
+    \ [g:versions_basic, '1.1', '1.1.2'],
+    \ [g:versions_basic, '2', '2.0.0'],
+    \ [g:versions_basic, '^2.0.0', '2.0.0'],
+    \ [g:versions_basic, '3.0.0', ''],
+    \ [g:versions_basic, '^3.0.0', '']
+  \ ]
+
+  let g:versions_zero = ['0.0.1', '0.0.3', '0.0.4', '0.1.0', '0.2.0', '0.2.3', '0.2.5', '0.3.0']
+  let g:satisfy_zero_cases = [
+    \ [g:versions_zero, '^0.0.3', '0.0.3'],
+    \ [g:versions_zero, '^0.2.3', '0.2.5'],
+    \ [g:versions_zero, '^0.2.0', '0.2.5'],
+    \ [g:versions_zero, '~0.2.3', '0.2.5']
+  \ ]
+
+  let g:versions_prerelease = ['1.0.0-alpha', '1.0.0-alpha.1', '1.0.0-beta.2', '1.0.0-beta.11', '1.0.0-rc.1', '1.0.0']
+  let g:satisfy_prerelease_cases = [
+    \ [g:versions_prerelease, '^1.0.0-beta.2', '1.0.0'],
+    \ [g:versions_prerelease, '1.0.0-beta.2', '1.0.0-beta.2'],
+    \ [['1.0.0-beta.2', '1.5.0-alpha', '1.0.0'], '^1.0.0-beta.2', '1.0.0'],
+    \ [['1.0.0-beta.2', '1.0.0-rc.1'], '^1.0.0-beta.2', '1.0.0-rc.1'],
+    \ [['1.5.0-alpha'], '^1.0.0', '']
+  \ ]
+
+  for [g:ver_list, g:range, g:expected] in g:satisfy_cases + g:satisfy_zero_cases + g:satisfy_prerelease_cases
+    AssertEqual g:expected, importmap#semver#MaxSatisfying(g:ver_list, g:range), 'MaxSatisfying range ' . g:range
+  endfor
+
+Execute (Semver MaxSatisfying - unsupported range syntax raises an error):
+  for g:range in ['>=1.0.0', '1.2.3 - 2.0.0', '1.0.0 || 2.0.0']
+    let g:err = ''
+    try
+      call importmap#semver#MaxSatisfying(['1.0.0'], g:range)
+    catch
+      let g:err = v:exception
+    endtry
+    Assert g:err =~# 'unsupported version range', 'expected unsupported-range error for ' . g:range . ', got: ' . g:err
+  endfor

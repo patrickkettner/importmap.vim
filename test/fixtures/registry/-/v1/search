@@ -1,0 +1,25 @@
+{
+  "objects": [
+    {
+      "package": {
+        "name": "canvas-confetti",
+        "version": "1.9.3",
+        "description": "Performant confetti animation in the browser"
+      }
+    },
+    {
+      "package": {
+        "name": "lodash-es",
+        "version": "4.17.21",
+        "description": "Lodash exported as ES modules"
+      }
+    },
+    {
+      "package": {
+        "name": "@lit/reactive-element",
+        "version": "2.0.4",
+        "description": "Base reactive element class for Lit"
+      }
+    }
+  ]
+}

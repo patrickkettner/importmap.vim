@@ -1,0 +1,12 @@
+set nocompatible
+filetype off
+set noswapfile
+set nobackup
+set nowritebackup
+let s:root = expand('<sfile>:p:h:h')
+let &runtimepath = s:root . ',' . s:root . '/.test/vader.vim,$VIMRUNTIME'
+filetype plugin indent on
+syntax enable
+
+" keep test runs out of the real registry cache
+let g:importmap_cache_dir = fnamemodify(tempname(), ':h') . '/importmap-test-cache'

@@ -1,0 +1,241 @@
+Execute (HTML ReadMap - existing block, reordered attributes, multiline tag):
+  let g:res = importmap#html#ReadMap('test/fixtures/html/existing_map.html')
+  AssertEqual 1, g:res.found
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:res.parsed.imports['canvas-confetti']
+
+  let g:reordered = importmap#html#ReadMap('test/fixtures/html/reordered_attrs.html')
+  AssertEqual 1, g:reordered.found
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21', g:reordered.parsed.imports['lodash-es']
+
+  let g:multiline = importmap#html#ReadMap('test/fixtures/html/multiline_tag.html')
+  AssertEqual 1, g:multiline.found
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:multiline.parsed.imports['canvas-confetti']
+
+Execute (HTML ReadMap - multiple blocks warning and first wins):
+  let g:multi = importmap#html#ReadMap('test/fixtures/html/multiple_maps.html')
+  AssertEqual 1, g:multi.found
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:multi.parsed.imports['canvas-confetti']
+
+Execute (HTML ReadMap - error when src= is present):
+  let g:tmp = tempname() . '.html'
+  call writefile(['<!DOCTYPE html><html><head><script type="importmap" src="external.json"></script></head><body></body></html>'], g:tmp)
+  let g:err = ''
+  try
+    call importmap#html#ReadMap(g:tmp)
+  catch
+    let g:err = v:exception
+  endtry
+  Assert g:err =~# 'src=', 'expected the src= error, got: ' . g:err
+  call delete(g:tmp)
+
+Execute (HTML ReadMap - data-src is not src):
+  let g:tmp = tempname() . '.html'
+  call writefile(['<html><head><script type="importmap" data-src="x">{"imports":{}}</script></head></html>'], g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  AssertEqual 1, g:res.found
+  call delete(g:tmp)
+
+Execute (HTML ReadMap - malformed JSON abort):
+  let g:err = ''
+  try
+    call importmap#html#ReadMap('test/fixtures/html/malformed_json.html')
+  catch
+    let g:err = v:exception
+  endtry
+  Assert g:err !=# '', 'expected abort on malformed JSON'
+
+Execute (HTML ReadMap - minified single-line document):
+  let g:tmp = tempname() . '.html'
+  call writefile(['<!DOCTYPE html><html><head><meta charset="utf-8"><script type="importmap">{"imports":{"a":"https://esm.sh/a@1.0.0"}}</script></head><body></body></html>'], g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  AssertEqual 1, g:res.found
+  AssertEqual 'https://esm.sh/a@1.0.0', g:res.parsed.imports['a']
+
+  let g:map = g:res.parsed
+  let g:map.imports['b'] = 'https://esm.sh/b@2.0.0'
+  call importmap#html#WriteMap(g:tmp, g:map, g:res)
+  AssertEqual 1, len(readfile(g:tmp)), 'a one-line document must stay one line'
+  let g:res2 = importmap#html#ReadMap(g:tmp)
+  AssertEqual 'https://esm.sh/a@1.0.0', g:res2.parsed.imports['a']
+  AssertEqual 'https://esm.sh/b@2.0.0', g:res2.parsed.imports['b']
+  call delete(g:tmp)
+
+Execute (HTML ReadMap - a commented-out importmap is skipped):
+  let g:tmp = tempname() . '.html'
+  call writefile([
+    \ '<html><head>',
+    \ '<!--',
+    \ '<script type="importmap">{"imports":{"stale":"https://esm.sh/stale@1.0.0"}}</script>',
+    \ '-->',
+    \ '<script type="importmap">{"imports":{"live":"https://esm.sh/live@1.0.0"}}</script>',
+    \ '</head><body></body></html>'], g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  AssertEqual 1, g:res.found
+  AssertEqual ['live'], keys(g:res.parsed.imports)
+  call delete(g:tmp)
+
+Execute (HTML ReadMap - importmap after another script on the same line):
+  let g:tmp = tempname() . '.html'
+  call writefile(['<html><head><script src="a.js"></script><script type="importmap">{"imports":{"a":"https://esm.sh/a@1.0.0"}}</script></head></html>'], g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  AssertEqual 1, g:res.found
+  AssertEqual 'https://esm.sh/a@1.0.0', g:res.parsed.imports['a']
+  call delete(g:tmp)
+
+Execute (HTML ReadMap - JSON-file mode):
+  let g:json_mode = importmap#html#ReadMap('test/fixtures/html/map.json')
+  AssertEqual 1, g:json_mode.found
+  AssertEqual 1, g:json_mode.is_json_mode
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:json_mode.parsed.imports['canvas-confetti']
+
+Execute (HTML Write - insert before module script):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/insert_before_module.html'), g:tmp)
+  let g:map = {'imports': {'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3'}}
+  call importmap#html#WriteMap(g:tmp, g:map, {})
+  let g:content = join(readfile(g:tmp), "\n")
+  let g:idx_map = stridx(g:content, '<script type="importmap">')
+  let g:idx_mod = stridx(g:content, '<script type="module">')
+  Assert g:idx_map != -1, 'importmap tag should be inserted'
+  Assert g:idx_map < g:idx_mod, 'importmap should be inserted before module script'
+  call delete(g:tmp)
+
+Execute (HTML Write - insert before head close):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/insert_before_head_close.html'), g:tmp)
+  let g:map = {'imports': {'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3'}}
+  call importmap#html#WriteMap(g:tmp, g:map, {})
+  let g:content = join(readfile(g:tmp), "\n")
+  let g:idx_map = stridx(g:content, '<script type="importmap">')
+  let g:idx_head_close = stridx(g:content, '</head>')
+  Assert g:idx_map != -1, 'importmap tag should be inserted'
+  Assert g:idx_map < g:idx_head_close, 'importmap should be inserted before </head>'
+  call delete(g:tmp)
+
+Execute (HTML Write - insert after head open):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/insert_after_head_open.html'), g:tmp)
+  let g:map = {'imports': {'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3'}}
+  call importmap#html#WriteMap(g:tmp, g:map, {})
+  let g:content = join(readfile(g:tmp), "\n")
+  let g:idx_head_open = stridx(g:content, '<head id="main-head" class="header">')
+  let g:idx_map = stridx(g:content, '<script type="importmap">')
+  Assert g:idx_map != -1, 'importmap tag should be inserted'
+  Assert g:idx_head_open < g:idx_map, 'importmap should be inserted after <head ...>'
+  call delete(g:tmp)
+
+Execute (HTML Write - insert into a single-line head lands inside it):
+  let g:tmp = tempname() . '.html'
+  call writefile(['<html>', '<head></head>', '<body></body>', '</html>'], g:tmp)
+  call importmap#html#WriteMap(g:tmp, {'imports': {'a': 'https://esm.sh/a@1.0.0'}}, {})
+  let g:lines = readfile(g:tmp)
+  Assert g:lines[1] =~# '^<head><script type="importmap">.*</script></head>$', 'block must land inside the head element: ' . g:lines[1]
+  let g:res = importmap#html#ReadMap(g:tmp)
+  AssertEqual 'https://esm.sh/a@1.0.0', g:res.parsed.imports['a']
+  call delete(g:tmp)
+
+Execute (HTML Write - error on no head tag):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/no_head.html'), g:tmp)
+  let g:map = {'imports': {'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3'}}
+  let g:err = ''
+  try
+    call importmap#html#WriteMap(g:tmp, g:map, {})
+  catch
+    let g:err = v:exception
+  endtry
+  Assert g:err !=# '', 'expected error when inserting into document with no head tag'
+  call delete(g:tmp)
+
+Execute (HTML Write - rewriting keeps the script tag attributes):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/reordered_attrs.html'), g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  let g:map = g:res.parsed
+  let g:map.imports['x'] = 'https://esm.sh/x@1.0.0'
+  call importmap#html#WriteMap(g:tmp, g:map, g:res)
+  let g:content = join(readfile(g:tmp), "\n")
+  Assert stridx(g:content, "<script defer type='importmap' id=\"my-map\">") != -1, 'attributes must survive a rewrite'
+  call delete(g:tmp)
+
+Execute (HTML Write - a value containing </script> cannot break out of the block):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/existing_map.html'), g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  let g:map = g:res.parsed
+  let g:map.imports['evil'] = 'https://cdn.example/</script><script>alert(1)</script>'
+  call importmap#html#WriteMap(g:tmp, g:map, g:res)
+  let g:content = join(readfile(g:tmp), "\n")
+  AssertEqual -1, stridx(g:content, '<script>alert(1)'), 'a raw script tag must not appear in the document'
+  let g:res2 = importmap#html#ReadMap(g:tmp)
+  AssertEqual 'https://cdn.example/</script><script>alert(1)</script>', g:res2.parsed.imports['evil']
+  call delete(g:tmp)
+
+Execute (HTML Write - repeated rewrites are byte-identical):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/existing_map.html', 'b'), g:tmp, 'b')
+  for g:i in range(3)
+    let g:res = importmap#html#ReadMap(g:tmp)
+    call importmap#html#WriteMap(g:tmp, g:res.parsed, g:res)
+  endfor
+  AssertEqual readfile('test/fixtures/html/existing_map.html', 'b'), readfile(g:tmp, 'b')
+  call delete(g:tmp)
+
+Execute (HTML Write - crlf files stay crlf, including the final newline):
+  let g:tmp = tempname() . '.html'
+  let g:crlf_lines = map(readfile('test/fixtures/html/crlf.html'), 'substitute(v:val, ''\r$'', '''', '''') . nr2char(13)') + ['']
+  call writefile(g:crlf_lines, g:tmp, 'b')
+  let g:res = importmap#html#ReadMap(g:tmp)
+  let g:map = g:res.parsed
+  let g:map.imports['new-pkg'] = 'https://esm.sh/new-pkg@1.0.0'
+  call importmap#html#WriteMap(g:tmp, g:map, g:res)
+  let g:raw = readfile(g:tmp, 'b')
+  AssertEqual '', g:raw[-1], 'the final newline must survive'
+  for g:line in g:raw[:-2]
+    Assert g:line =~# "\r$", 'every line must end in CR, got: ' . strtrans(g:line)
+  endfor
+  let g:res2 = importmap#html#ReadMap(g:tmp)
+  AssertEqual 'https://esm.sh/new-pkg@1.0.0', g:res2.parsed.imports['new-pkg']
+  call delete(g:tmp)
+
+Execute (HTML Write - buffer vs disk rule):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/existing_map.html'), g:tmp)
+  execute 'edit ' . fnameescape(g:tmp)
+  let g:bufnr = bufnr('%')
+  let g:res = importmap#html#ReadMap(g:tmp)
+  let g:map = g:res.parsed
+  let g:map.imports['buf-pkg'] = 'https://esm.sh/buf-pkg@1.0.0'
+  call importmap#html#WriteMap(g:tmp, g:map, g:res)
+
+  AssertEqual 1, getbufvar(g:bufnr, '&modified'), 'buffer should be marked modified'
+  let g:buf_lines = getbufline(g:bufnr, 1, '$')
+  Assert stridx(join(g:buf_lines, "\n"), 'buf-pkg') != -1, 'buffer should contain the new package'
+
+  let g:disk_lines = readfile(g:tmp)
+  AssertEqual -1, stridx(join(g:disk_lines, "\n"), 'buf-pkg'), 'disk file should not be modified yet'
+
+  execute 'bwipeout! ' . g:bufnr
+  call delete(g:tmp)
+
+Execute (HTML Write - unknown top-level keys survive a round trip):
+  let g:tmp = tempname() . '.html'
+  call writefile(readfile('test/fixtures/html/unknown_keys.html'), g:tmp)
+  let g:res = importmap#html#ReadMap(g:tmp)
+  call importmap#html#WriteMap(g:tmp, g:res.parsed, g:res)
+  let g:res2 = importmap#html#ReadMap(g:tmp)
+  AssertEqual g:res.parsed, g:res2.parsed
+  call delete(g:tmp)
+
+Execute (HTML Target Selection - search candidates and priority):
+  let g:dir = tempname()
+  call mkdir(g:dir, 'p')
+  let g:target_file = g:dir . '/index.html'
+  call writefile(['<!DOCTYPE html><html><head></head><body></body></html>'], g:target_file)
+  let g:old_cwd = getcwd()
+  execute 'cd ' . fnameescape(g:dir)
+  let g:found = importmap#html#LocateTarget()
+  AssertEqual resolve(fnamemodify(g:target_file, ':p')), fnamemodify(g:found, ':p')
+  execute 'cd ' . fnameescape(g:old_cwd)
+  call delete(g:target_file)
+  call delete(g:dir, 'd')

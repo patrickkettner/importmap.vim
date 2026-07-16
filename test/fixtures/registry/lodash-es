@@ -1,0 +1,12 @@
+{
+  "name": "lodash-es",
+  "dist-tags": {
+    "latest": "4.17.21"
+  },
+  "versions": {
+    "4.17.21": {
+      "name": "lodash-es",
+      "version": "4.17.21"
+    }
+  }
+}

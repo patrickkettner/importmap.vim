@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  VADER_SHA: 429b669e6158be3a9fc110799607c232e6ed8e29
+
+jobs:
+  lint:
+    name: Lint (vint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+      - name: Install vint
+        run: pip install "setuptools<81" vim-vint
+      - name: Run vint
+        run: vint plugin/ autoload/
+
+  test-vim:
+    name: Test Vim (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [v8.1.0039, stable]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Vim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          version: ${{ matrix.version }}
+      - name: Clone vader.vim
+        run: |
+          mkdir -p .test
+          git clone https://github.com/junegunn/vader.vim.git .test/vader.vim
+          git -C .test/vader.vim checkout "$VADER_SHA"
+      - name: Run tests
+        run: VADER_OUTPUT_FILE=/dev/stdout vim -es -Nu test/vimrc -U NONE -i NONE -c 'Vader! test/*.vader'
+
+  test-nvim:
+    name: Test Neovim (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [stable]
+    steps:
+      - uses: actions/checkout@v5
+      - name: Set up Neovim
+        uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: ${{ matrix.version }}
+      - name: Clone vader.vim
+        run: |
+          mkdir -p .test
+          git clone https://github.com/junegunn/vader.vim.git .test/vader.vim
+          git -C .test/vader.vim checkout "$VADER_SHA"
+      - name: Run tests
+        run: VADER_OUTPUT_FILE=/dev/stdout nvim --headless -Nu test/vimrc -U NONE -i NONE -c 'Vader! test/*.vader'

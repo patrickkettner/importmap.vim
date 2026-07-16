@@ -1,0 +1,84 @@
+Execute (Scan ExtractSpecifiers - static, side-effect, export-from, dynamic, and import.meta.resolve):
+  let g:code = [
+    \ 'import confetti from "canvas-confetti";',
+    \ "import 'side-effect-pkg';",
+    \ 'export { debounce } from "lodash-es/debounce";',
+    \ 'const mod = await import("@lit/reactive-element/foo.js");',
+    \ 'const url = import.meta.resolve("my-pkg/assets/logo.png");'
+  \ ]
+  AssertEqual ['@lit/reactive-element/foo.js', 'canvas-confetti', 'lodash-es/debounce', 'my-pkg/assets/logo.png', 'side-effect-pkg'], importmap#scan#ExtractSpecifiers(g:code)
+
+Execute (Scan ExtractSpecifiers - imports wrapped across lines):
+  let g:code = [
+    \ 'import {',
+    \ '  a,',
+    \ '  b',
+    \ "} from 'multiline-pkg';"
+  \ ]
+  AssertEqual ['multiline-pkg'], importmap#scan#ExtractSpecifiers(g:code)
+
+Execute (Scan ExtractSpecifiers - minified statements):
+  AssertEqual ['pkg-a', 'pkg-b'], importmap#scan#ExtractSpecifiers(['import{a}from"pkg-a";export*from"pkg-b";'])
+
+Execute (Scan ExtractSpecifiers - dynamic import with a plain template literal):
+  AssertEqual ['tpl-pkg'], importmap#scan#ExtractSpecifiers(['const m = await import(`tpl-pkg`);'])
+
+Execute (Scan ExtractSpecifiers - commented-out imports are ignored):
+  let g:code = [
+    \ '// import dead from "commented-pkg";',
+    \ '/* import dead2 from "block-pkg"; */',
+    \ '/**',
+    \ ' * import dead3 from "jsdoc-pkg";',
+    \ ' */',
+    \ 'import live from "live-pkg";'
+  \ ]
+  AssertEqual ['live-pkg'], importmap#scan#ExtractSpecifiers(g:code)
+
+Execute (Scan ExtractSpecifiers - import must be its own word):
+  AssertEqual [], importmap#scan#ExtractSpecifiers(['reimport thing from "suffix-pkg";'])
+
+Execute (Scan Skip - relative, absolute, node builtins, full URLs):
+  let g:code = [
+    \ 'import a from "./local.js";',
+    \ 'import b from "../parent.js";',
+    \ 'import c from "/root.js";',
+    \ 'import d from "https://esm.sh/remote.js";',
+    \ 'import e from "http://example.com/mod.js";',
+    \ 'import f from "data:text/javascript,console.log(1)";',
+    \ 'import fs from "node:fs";',
+    \ 'import path from "node:path";',
+    \ 'import valid from "valid-bare-pkg";'
+  \ ]
+  AssertEqual ['valid-bare-pkg'], importmap#scan#ExtractSpecifiers(g:code)
+
+Execute (Scan ReduceSubpath - table-driven subpath reduction):
+  let g:cases = [
+    \ ['lodash-es/debounce', 'lodash-es'],
+    \ ['lodash-es/debounce/internal.js', 'lodash-es'],
+    \ ['lodash-es', 'lodash-es'],
+    \ ['@lit/reactive-element/foo.js', '@lit/reactive-element'],
+    \ ['@lit/reactive-element/decorators/custom-element.js', '@lit/reactive-element'],
+    \ ['@lit/reactive-element', '@lit/reactive-element'],
+    \ ['canvas-confetti', 'canvas-confetti']
+  \ ]
+
+  for [g:input, g:expected] in g:cases
+    AssertEqual g:expected, importmap#scan#ReduceSubpath(g:input), 'ReduceSubpath(' . g:input . ')'
+  endfor
+
+Execute (Scan in HTML buffer - only inside <script type="module">):
+  let g:html_lines = [
+    \ '<!DOCTYPE html><html><head>',
+    \ '<script type="importmap">{"imports": {"lodash-es": "url"}}</script>',
+    \ '<script src="ignored.js">import ignored1 from "ignored-pkg1";</script>',
+    \ '<script type="text/javascript">import ignored2 from "ignored-pkg2";</script>',
+    \ '<script type="module">',
+    \ '  import confetti from "canvas-confetti";',
+    \ '  import { lit } from "@lit/reactive-element";',
+    \ '</script>',
+    \ '</head><body></body></html>'
+  \ ]
+  AssertEqual ['@lit/reactive-element', 'canvas-confetti'], importmap#scan#ExtractFromHtml(g:html_lines)
+
+Execute (Scan in HTML buffer - single-line module script):
+  AssertEqual ['one-liner-pkg'], importmap#scan#ExtractFromHtml(['<html><body><script type="module">import a from "one-liner-pkg";</script></body></html>'])

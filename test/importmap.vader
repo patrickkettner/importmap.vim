@@ -1,0 +1,112 @@
+Execute (ParseSpec - table-driven parsing of name and version spec):
+  let g:cases = [
+    \ ['lodash-es', {'name': 'lodash-es', 'spec': 'latest'}],
+    \ ['lodash-es@4.17.21', {'name': 'lodash-es', 'spec': '4.17.21'}],
+    \ ['lodash-es@^4.17', {'name': 'lodash-es', 'spec': '^4.17'}],
+    \ ['canvas-confetti@beta', {'name': 'canvas-confetti', 'spec': 'beta'}],
+    \ ['@lit/reactive-element', {'name': '@lit/reactive-element', 'spec': 'latest'}],
+    \ ['@lit/reactive-element@2.0.4', {'name': '@lit/reactive-element', 'spec': '2.0.4'}],
+    \ ['@lit/reactive-element@^2', {'name': '@lit/reactive-element', 'spec': '^2'}]
+  \ ]
+
+  for [g:input, g:expected] in g:cases
+    let g:res = importmap#ParseSpec(g:input)
+    AssertEqual g:expected.name, g:res.name, 'Name mismatch for ' . g:input
+    AssertEqual g:expected.spec, g:res.spec, 'Spec mismatch for ' . g:input
+  endfor
+
+Execute (ParseSpec - subpath install rejection):
+  let g:err = ''
+  try
+    call importmap#ParseSpec('lodash-es/debounce')
+  catch
+    let g:err = v:exception
+  endtry
+  Assert g:err =~# 'subpath', 'expected the subpath error, got: ' . g:err
+
+Before:
+  let g:importmap_sync = 1
+  let g:importmap_esm_sh_flags = ''
+
+After:
+  let g:importmap_sync = 0
+
+Execute (End-to-End Commands - setup fixture target and registry url):
+  let g:saved_registry_url = g:importmap_registry_url
+  let g:importmap_registry_url = 'file://' . substitute(fnamemodify('test/fixtures/registry', ':p'), '/$', '', '')
+  let g:tmp = tempname() . '.html'
+
+  call writefile(['<!DOCTYPE html><html><head></head><body></body></html>'], g:tmp)
+  let g:importmap_target = g:tmp
+  let g:importmap_prefix_mappings = 1
+  let g:importmap_cdn = 'esm.sh'
+
+Execute (End-to-End Commands - install canvas-confetti and @lit/reactive-element):
+  call importmap#Dispatch(['install', 'canvas-confetti', '@lit/reactive-element@^2'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 1, g:res.found
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:res.parsed.imports['canvas-confetti']
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3/', g:res.parsed.imports['canvas-confetti/']
+  AssertEqual 'https://esm.sh/@lit/reactive-element@2.0.4', g:res.parsed.imports['@lit/reactive-element']
+  AssertEqual 'https://esm.sh/@lit/reactive-element@2.0.4/', g:res.parsed.imports['@lit/reactive-element/']
+
+Execute (End-to-End Commands - install does not invent empty scopes or integrity):
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 0, has_key(g:res.parsed, 'scopes'), 'no empty scopes member should be written'
+  AssertEqual 0, has_key(g:res.parsed, 'integrity'), 'no empty integrity member should be written'
+
+Execute (End-to-End Commands - failures are per-package and do not block the batch):
+  call importmap#Dispatch(['install', 'lodash-es', 'no-such-pkg-xyz', 'canvas-confetti@>=9.9.9'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21', g:res.parsed.imports['lodash-es'], 'the good package must still install'
+  AssertEqual 0, has_key(g:res.parsed.imports, 'no-such-pkg-xyz'), 'the unfetchable package must be skipped'
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:res.parsed.imports['canvas-confetti'], 'a bad range must not change the existing mapping'
+  call importmap#Dispatch(['rm', 'lodash-es'], 0)
+
+Execute (End-to-End Commands - install completion hits the registry search endpoint):
+  let g:cands = importmap#Complete('canv', 'ImportMap install canv', 22)
+  Assert index(g:cands, 'canvas-confetti') >= 0, 'completion should offer canvas-confetti, got: ' . string(g:cands)
+
+Execute (End-to-End Commands - list output):
+  call importmap#Dispatch(['list'], 0)
+
+Execute (End-to-End Commands - outdated quickfix population):
+  call importmap#Dispatch(['outdated'], 0)
+  let g:qflist = getqflist()
+  Assert type(g:qflist) == type([]), 'outdated should populate the quickfix list'
+
+Execute (End-to-End Commands - update):
+  call importmap#Dispatch(['update'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:res.parsed.imports['canvas-confetti']
+
+Execute (End-to-End Commands - update of a package not in the map adds nothing):
+  call importmap#Dispatch(['update', 'not-in-map'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 0, has_key(g:res.parsed.imports, 'not-in-map'), 'update must not install new packages'
+
+Execute (End-to-End Commands - cdn rewrite to jsdelivr):
+  call importmap#Dispatch(['cdn', 'jsdelivr'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/+esm', g:res.parsed.imports['canvas-confetti']
+  AssertEqual 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/', g:res.parsed.imports['canvas-confetti/']
+
+Execute (End-to-End Commands - the Bower alias installs too):
+  call importmap#Bower(['install', 'lodash-es'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21', g:res.parsed.imports['lodash-es']
+  call importmap#Dispatch(['rm', 'lodash-es'], 0)
+
+Execute (End-to-End Commands - rm package):
+  call importmap#Dispatch(['rm', 'canvas-confetti'], 0)
+  let g:res = importmap#html#ReadMap(g:importmap_target)
+  AssertEqual 0, has_key(g:res.parsed.imports, 'canvas-confetti'), 'canvas-confetti should be removed'
+  AssertEqual 0, has_key(g:res.parsed.imports, 'canvas-confetti/'), 'canvas-confetti/ prefix should be removed'
+  AssertEqual 1, has_key(g:res.parsed.imports, '@lit/reactive-element'), '@lit/reactive-element should remain'
+
+Execute (End-to-End Commands - cleanup):
+  if exists('g:importmap_target') && filereadable(g:importmap_target)
+    call delete(g:importmap_target)
+  endif
+  let g:importmap_target = ''
+  let g:importmap_registry_url = g:saved_registry_url

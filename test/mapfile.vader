@@ -1,0 +1,71 @@
+Execute (Mapfile Serialize - deterministic sorting and natural sort):
+  let g:input = {
+    \ 'imports': {
+      \ 'lodash-es': 'https://esm.sh/lodash-es@4.17.21',
+      \ 'canvas-confetti/': 'https://esm.sh/canvas-confetti@1.9.3/',
+      \ 'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3',
+      \ '@lit/reactive-element': 'https://esm.sh/@lit/reactive-element@2.0.4',
+      \ 'a-pkg': 'https://esm.sh/a-pkg@1.0.0',
+      \ 'Z-pkg': 'https://esm.sh/Z-pkg@1.0.0'
+    \ }
+  \ }
+  let g:str = join(importmap#mapfile#Serialize(g:input, 0), "\n")
+
+  let g:expected = "{\n" .
+    \ "  \"imports\": {\n" .
+    \ "    \"@lit/reactive-element\": \"https://esm.sh/@lit/reactive-element@2.0.4\",\n" .
+    \ "    \"a-pkg\": \"https://esm.sh/a-pkg@1.0.0\",\n" .
+    \ "    \"canvas-confetti\": \"https://esm.sh/canvas-confetti@1.9.3\",\n" .
+    \ "    \"canvas-confetti/\": \"https://esm.sh/canvas-confetti@1.9.3/\",\n" .
+    \ "    \"lodash-es\": \"https://esm.sh/lodash-es@4.17.21\",\n" .
+    \ "    \"Z-pkg\": \"https://esm.sh/Z-pkg@1.0.0\"\n" .
+    \ "  }\n" .
+    \ "}"
+  AssertEqual g:expected, g:str
+
+Execute (Mapfile Serialize - top-level ordering and preservation of unknown keys/scopes/integrity):
+  let g:input = {
+    \ 'custom_metadata': {'foo': 'bar'},
+    \ 'integrity': {'https://esm.sh/canvas-confetti@1.9.3': 'sha384-xyz'},
+    \ 'scopes': {'/scope/': {'lodash-es': 'https://esm.sh/lodash-es@4.17.21'}},
+    \ 'imports': {'canvas-confetti': 'https://esm.sh/canvas-confetti@1.9.3'}
+  \ }
+  let g:str = join(importmap#mapfile#Serialize(g:input, 0), "\n")
+
+  let g:decoded = json_decode(g:str)
+  AssertEqual 'bar', g:decoded.custom_metadata.foo
+  AssertEqual 'sha384-xyz', g:decoded.integrity['https://esm.sh/canvas-confetti@1.9.3']
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21', g:decoded.scopes['/scope/']['lodash-es']
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:decoded.imports['canvas-confetti']
+
+  let g:idx_imports = stridx(g:str, '"imports":')
+  let g:idx_scopes = stridx(g:str, '"scopes":')
+  let g:idx_integrity = stridx(g:str, '"integrity":')
+  let g:idx_custom = stridx(g:str, '"custom_metadata":')
+  Assert g:idx_imports < g:idx_scopes, 'imports before scopes'
+  Assert g:idx_scopes < g:idx_integrity, 'scopes before integrity'
+  Assert g:idx_integrity < g:idx_custom, 'integrity before custom_metadata'
+
+Execute (Mapfile Serialize - custom base_indent and g:importmap_indent):
+  let g:importmap_indent = 4
+  let g:str = join(importmap#mapfile#Serialize({'imports': {'pkg': 'url'}}, 2), "\n")
+  let g:expected = "  {\n" .
+    \ "      \"imports\": {\n" .
+    \ "          \"pkg\": \"url\"\n" .
+    \ "      }\n" .
+    \ "  }"
+  AssertEqual g:expected, g:str
+  let g:importmap_indent = 2
+
+Execute (Mapfile Serialize - escapes < so </script> cannot appear literally):
+  let g:str = join(importmap#mapfile#Serialize({'imports': {'evil': 'https://x/</script>'}}, 0), "\n")
+  AssertEqual -1, stridx(g:str, '</script>'), 'serialized JSON must not contain a literal </script>'
+  AssertEqual 'https://x/</script>', json_decode(g:str).imports.evil
+
+Execute (Mapfile Serialize - backslash before a slash survives the round trip):
+  let g:val = 'a\/b'
+  let g:str = join(importmap#mapfile#Serialize({'imports': {'k': g:val}}, 0), "\n")
+  AssertEqual g:val, json_decode(g:str).imports.k
+
+Execute (Mapfile SerializeCompact - single line with the same ordering):
+  AssertEqual '{"imports":{"a":"1","b":"2"}}', importmap#mapfile#SerializeCompact({'imports': {'b': '2', 'a': '1'}})

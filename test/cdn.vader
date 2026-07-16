@@ -1,0 +1,104 @@
+Execute (CDN Urls - esm.sh without flags):
+  let g:importmap_esm_sh_flags = ''
+  let g:res = importmap#cdn#Urls('esm.sh', 'canvas-confetti', '1.9.3')
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3', g:res.bare
+  AssertEqual 'https://esm.sh/canvas-confetti@1.9.3/', g:res.prefix
+
+  let g:scoped = importmap#cdn#Urls('esm.sh', '@lit/reactive-element', '2.0.4')
+  AssertEqual 'https://esm.sh/@lit/reactive-element@2.0.4', g:scoped.bare
+  AssertEqual 'https://esm.sh/@lit/reactive-element@2.0.4/', g:scoped.prefix
+
+Execute (CDN Urls - esm.sh with query flags):
+  let g:importmap_esm_sh_flags = '?bundle'
+  let g:res = importmap#cdn#Urls('esm.sh', 'lodash-es', '4.17.21')
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21?bundle', g:res.bare
+  AssertEqual 'https://esm.sh/lodash-es@4.17.21/', g:res.prefix
+  let g:importmap_esm_sh_flags = ''
+
+Execute (CDN Urls - jsdelivr):
+  let g:res = importmap#cdn#Urls('jsdelivr', 'canvas-confetti', '1.9.3')
+  AssertEqual 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/+esm', g:res.bare
+  AssertEqual 'https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/', g:res.prefix
+
+  let g:scoped = importmap#cdn#Urls('jsdelivr', '@lit/reactive-element', '2.0.4')
+  AssertEqual 'https://cdn.jsdelivr.net/npm/@lit/reactive-element@2.0.4/+esm', g:scoped.bare
+  AssertEqual 'https://cdn.jsdelivr.net/npm/@lit/reactive-element@2.0.4/', g:scoped.prefix
+
+Execute (CDN Urls - unpkg):
+  let g:res = importmap#cdn#Urls('unpkg', 'canvas-confetti', '1.9.3')
+  AssertEqual 'https://unpkg.com/canvas-confetti@1.9.3?module', g:res.bare
+  AssertEqual 'https://unpkg.com/canvas-confetti@1.9.3/', g:res.prefix
+
+  let g:scoped = importmap#cdn#Urls('unpkg', '@lit/reactive-element', '2.0.4')
+  AssertEqual 'https://unpkg.com/@lit/reactive-element@2.0.4?module', g:scoped.bare
+  AssertEqual 'https://unpkg.com/@lit/reactive-element@2.0.4/', g:scoped.prefix
+
+Execute (CDN ParseUrl - esm.sh inverse parsing):
+  let g:bare = importmap#cdn#ParseUrl('https://esm.sh/canvas-confetti@1.9.3')
+  AssertEqual 'canvas-confetti', g:bare.name
+  AssertEqual '1.9.3', g:bare.version
+  AssertEqual 0, g:bare.prefix
+
+  let g:bare_flags = importmap#cdn#ParseUrl('https://esm.sh/canvas-confetti@1.9.3?bundle')
+  AssertEqual 'canvas-confetti', g:bare_flags.name
+  AssertEqual '1.9.3', g:bare_flags.version
+  AssertEqual 0, g:bare_flags.prefix
+
+  let g:prefix = importmap#cdn#ParseUrl('https://esm.sh/canvas-confetti@1.9.3/')
+  AssertEqual 'canvas-confetti', g:prefix.name
+  AssertEqual '1.9.3', g:prefix.version
+  AssertEqual 1, g:prefix.prefix
+
+  let g:scoped_bare = importmap#cdn#ParseUrl('https://esm.sh/@lit/reactive-element@2.0.4')
+  AssertEqual '@lit/reactive-element', g:scoped_bare.name
+  AssertEqual '2.0.4', g:scoped_bare.version
+  AssertEqual 0, g:scoped_bare.prefix
+
+  let g:scoped_prefix = importmap#cdn#ParseUrl('https://esm.sh/@lit/reactive-element@2.0.4/')
+  AssertEqual '@lit/reactive-element', g:scoped_prefix.name
+  AssertEqual '2.0.4', g:scoped_prefix.version
+  AssertEqual 1, g:scoped_prefix.prefix
+
+Execute (CDN ParseUrl - jsdelivr inverse parsing):
+  let g:bare = importmap#cdn#ParseUrl('https://cdn.jsdelivr.net/npm/lodash-es@4.17.21/+esm')
+  AssertEqual 'lodash-es', g:bare.name
+  AssertEqual '4.17.21', g:bare.version
+  AssertEqual 0, g:bare.prefix
+
+  let g:prefix = importmap#cdn#ParseUrl('https://cdn.jsdelivr.net/npm/lodash-es@4.17.21/')
+  AssertEqual 'lodash-es', g:prefix.name
+  AssertEqual '4.17.21', g:prefix.version
+  AssertEqual 1, g:prefix.prefix
+
+  let g:scoped_bare = importmap#cdn#ParseUrl('https://cdn.jsdelivr.net/npm/@lit/reactive-element@2.0.4/+esm')
+  AssertEqual '@lit/reactive-element', g:scoped_bare.name
+  AssertEqual '2.0.4', g:scoped_bare.version
+  AssertEqual 0, g:scoped_bare.prefix
+
+Execute (CDN ParseUrl - unpkg inverse parsing):
+  let g:bare = importmap#cdn#ParseUrl('https://unpkg.com/lodash-es@4.17.21?module')
+  AssertEqual 'lodash-es', g:bare.name
+  AssertEqual '4.17.21', g:bare.version
+  AssertEqual 0, g:bare.prefix
+
+  let g:prefix = importmap#cdn#ParseUrl('https://unpkg.com/lodash-es@4.17.21/')
+  AssertEqual 'lodash-es', g:prefix.name
+  AssertEqual '4.17.21', g:prefix.version
+  AssertEqual 1, g:prefix.prefix
+
+  let g:scoped_bare = importmap#cdn#ParseUrl('https://unpkg.com/@lit/reactive-element@2.0.4?module')
+  AssertEqual '@lit/reactive-element', g:scoped_bare.name
+  AssertEqual '2.0.4', g:scoped_bare.version
+  AssertEqual 0, g:scoped_bare.prefix
+
+Execute (CDN ParseUrl - unrecognized / hand-written URLs):
+  let g:res = importmap#cdn#ParseUrl('https://custom-cdn.example.com/foo.js')
+  AssertEqual 0, has_key(g:res, 'name')
+
+Execute (CDN ParseUrl - plain http is not a recognized provider):
+  AssertEqual 0, importmap#cdn#ParseUrl('http://esm.sh/canvas-confetti@1.9.3').valid
+
+Execute (CDN ParseUrl - scoped esm.sh deep subpath is a prefix):
+  let g:res = importmap#cdn#ParseUrl('https://esm.sh/@lit/reactive-element@2.0.4/decorators/custom-element.js')
+  AssertEqual 1, g:res.prefix
+

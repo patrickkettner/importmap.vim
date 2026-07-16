@@ -1,0 +1,271 @@
+*importmap.txt*  Manage browser import maps directly from Vim
+
+Author:  patrickkettner <http://github.com/patrickkettner>
+License: MIT (see LICENSE-MIT.txt)
+
+==============================================================================
+CONTENTS                                                  *importmap-contents*
+
+    1. Overview .................................... |importmap-overview|
+    2. Quickstart .................................. |importmap-quickstart|
+    3. Concepts and design ......................... |importmap-concepts|
+        3.1. Why prefix mappings default on ........ |importmap-prefix-mappings|
+        3.2. CDN trade-offs ........................ |importmap-cdn-tradeoffs|
+        3.3. Subpath and asset resolution .......... |importmap-assets|
+        3.4. Subresource integrity (SRI) ........... |importmap-sri-concept|
+    4. Commands .................................... |importmap-commands|
+    5. Options ..................................... |importmap-options|
+
+==============================================================================
+1. OVERVIEW                                               *importmap-overview*
+
+importmap.vim is the spiritual successor to bower.vim (2013). While bower.vim
+installed browser components by shelling out to Node and Bower, importmap.vim
+manages browser components natively using standard ES modules, import maps, and
+modern ESM CDNs (esm.sh, jsDelivr, unpkg).
+
+The pitch: bower.vim installed browser components with a package manager.
+importmap.vim installs them with nothing at all.
+
+importmap.vim requires ZERO runtime dependencies beyond `curl`. There is no Node,
+no npm, no package manager, and no `node_modules`. The `<script type="importmap">`
+block inside your HTML file IS your lockfile.
+
+==============================================================================
+2. QUICKSTART                                           *importmap-quickstart*
+
+Open your `index.html` file (or run from anywhere within your project root) and
+install packages directly into your import map: >
+
+    :ImportMap install canvas-confetti lodash-es@^4.17
+<
+importmap.vim will fetch the version metadata from the npm registry, resolve the
+versions, and insert or update the `<script type="importmap">` block in your
+HTML: >
+
+    <script type="importmap">
+    {
+      "imports": {
+        "canvas-confetti": "https://esm.sh/canvas-confetti@1.9.3",
+        "canvas-confetti/": "https://esm.sh/canvas-confetti@1.9.3/",
+        "lodash-es": "https://esm.sh/lodash-es@4.17.21",
+        "lodash-es/": "https://esm.sh/lodash-es@4.17.21/"
+      }
+    }
+    </script>
+<
+You can also write JavaScript with bare imports and sync them: >
+
+    import confetti from "canvas-confetti";
+    import { debounce } from "lodash-es/debounce";
+<
+Run `:ImportMap sync` while in your JS/TS buffer, and importmap.vim will scan
+the buffer, detect the missing packages (`canvas-confetti` and `lodash-es`),
+and install them automatically.
+
+==============================================================================
+3. CONCEPTS AND DESIGN                                    *importmap-concepts*
+
+------------------------------------------------------------------------------
+3.1. WHY PREFIX MAPPINGS DEFAULT ON                *importmap-prefix-mappings*
+
+By default (`g:importmap_prefix_mappings` = 1), whenever you install a package
+named `pkg`, importmap.vim writes TWO entries to your `imports` dictionary:
+1. `"pkg"` -> `"https://esm.sh/pkg@1.2.3"`
+2. `"pkg/"` -> `"https://esm.sh/pkg@1.2.3/"`
+
+Packages are bundles of JavaScript, CSS, JSON, and static assets. By including
+the trailing-slash prefix mapping (`"pkg/"`), the import map becomes a
+general-purpose URL registry for the browser. This allows subpath imports
+(`lodash-es/debounce`), CSS imports (`import styles from "pkg/style.css" with
+{ type: "css" }`), and asset resolution via `import.meta.resolve("pkg/logo.png")`
+to work without any bundler configuration.
+
+------------------------------------------------------------------------------
+3.2. CDN TRADE-OFFS                                  *importmap-cdn-tradeoffs*
+
+importmap.vim supports three primary ESM CDNs via |:ImportMap-cdn|:
+
+Provider    Bare specifier URL                          Prefix URL
+------------------------------------------------------------------------------
+esm.sh      https://esm.sh/pkg@ver{flags}               https://esm.sh/pkg@ver/
+jsdelivr    https://cdn.jsdelivr.net/npm/pkg@ver/+esm   https://cdn.jsdelivr.net/npm/pkg@ver/
+unpkg       https://unpkg.com/pkg@ver?module            https://unpkg.com/pkg@ver/
+
+Why esm.sh is the default:
+The esm.sh server automatically rewrites a module's own internal bare imports to
+esm.sh URLs on the fly during request processing. This means NO client-side
+transitive resolution is needed inside the import map itself.
+
+jsDelivr and unpkg trade-offs:
+jsDelivr's `+esm` endpoint and unpkg's `?module` query parameter both provide
+bundle/module rewriting for the main entry point. However, their raw prefix
+URLs (`pkg/`) serve raw package files directly from the npm tarball. If raw JS
+files under a prefix URL contain un-rewritten bare imports, the browser will
+fail to resolve them unless those dependencies are also explicitly mapped.
+
+------------------------------------------------------------------------------
+3.3. SUBPATH & ASSET RESOLUTION                             *importmap-assets*
+
+Because prefix mappings are generated automatically, you do NOT need to install
+individual subpaths. Running `:ImportMap install lodash-es/debounce` will report
+an error explaining that `lodash-es/` already enables subpath resolution.
+
+In your modern web application, you can resolve static assets dynamically: >
+    const imgUrl = import.meta.resolve("canvas-confetti/assets/confetti.png");
+    document.querySelector("#logo").src = imgUrl;
+<
+
+------------------------------------------------------------------------------
+3.4. SUBRESOURCE INTEGRITY (SRI)                       *importmap-sri-concept*
+
+Import maps natively support a top-level `"integrity"` dictionary that maps
+resolved URLs to Subresource Integrity (SRI) cryptographic hashes: >
+    "integrity": {
+      "https://esm.sh/canvas-confetti@1.9.3": "sha384-xyz..."
+    }
+<
+Run `:ImportMap integrity` to compute SHA-384 hashes for all exact-URL imports.
+SRI hashes pin exact byte responses. Switching CDNs (`:ImportMap cdn`) or
+updating packages (`:ImportMap update`) drops stale integrity hashes. Re-run
+`:ImportMap integrity` after modifying your dependencies.
+
+==============================================================================
+4. COMMANDS                                               *importmap-commands*
+
+:ImportMap {subcommand} [args...]                         *:ImportMap*
+    The primary command for managing browser import maps. If called with no
+    arguments, delegates to `:ImportMap list`.
+    Add `!` (`:ImportMap!`) to bypass local registry caching and force fresh
+    network requests.
+
+:ImportMap install {pkg}[@{version|range|dist-tag}] ...   *:ImportMap-install*
+    Install one or more packages into the target HTML import map.
+    Supports scoped packages (`@lit/reactive-element@^2`), semver ranges (`^4.17`),
+    exact versions (`1.9.3`), and npm `dist-tags` (`latest`, `beta`).
+    Subpath installations (`pkg/subpath`) are rejected in favor of prefix maps.
+
+:ImportMap rm {pkg} ...                                   *:ImportMap-rm*
+    Remove one or more packages from the import map. Removes both exact and
+    prefix mappings (`pkg` and `pkg/`), along with associated `integrity` hashes.
+
+:ImportMap update [{pkg} ...]                             *:ImportMap-update*
+    Update specified packages (or all packages if no arguments are provided).
+    By default, treats the currently pinned version `X.Y.Z` as `^X.Y.Z` (allowing
+    same-major updates). To explicitly cross major version boundaries, specify
+    the target version or tag (`:ImportMap update pkg@latest`). Packages that
+    are not already in the map are skipped with a warning; use
+    |:ImportMap-install| to add new ones.
+
+:ImportMap outdated                                     *:ImportMap-outdated*
+    Check installed packages against the npm registry and report outdated
+    versions. Populates the Vim quickfix list (`:copen`) with columns showing
+    `current`, `wanted` (max satisfying `^current`), and `latest` (dist-tag),
+    pointing directly to each mapping's line in the target HTML file.
+
+:ImportMap list                                           *:ImportMap-list*
+    Echo all current mappings in the target HTML file in aligned columns.
+
+:ImportMap sync                                           *:ImportMap-sync*
+    Scan the current JavaScript, TypeScript, or HTML (`<script type="module">`)
+    buffer for bare import specifiers (`import x from "pkg"`, `import("pkg")`,
+    `export ... from "pkg"`, and `import.meta.resolve("pkg/asset")`).
+    Missing packages are identified, reduced to their owning package name, and
+    installed at `latest` after confirmation (`:ImportMap! sync` skips prompt).
+
+:ImportMap integrity                                 *:ImportMap-integrity*
+    Compute and write Subresource Integrity (`sha384-...`) hashes into the
+    import map's top-level `"integrity"` dictionary for all exact-URL mappings
+    using `openssl`.
+
+:ImportMap cdn {esm.sh|jsdelivr|unpkg}                     *:ImportMap-cdn*
+    Rewrite every known CDN URL in the import map to the specified CDN provider.
+    Hand-written URLs that do not match known provider patterns are preserved.
+
+:ImportMap doctor                                       *:ImportMap-doctor*
+    Run diagnostic checks on the environment and target configuration: verifies
+    `curl` and `openssl` availability, displays resolved project root and target
+    HTML path, checks import map block validity and placement, and shows cache
+    and configuration settings.
+
+:Bower [args...]                                              *:Bower*
+    An easter egg alias for `:ImportMap`. Installing packages via `:Bower` works
+    identically to `:ImportMap` while reminding you how far web standards have come.
+
+==============================================================================
+5. OPTIONS                                                 *importmap-options*
+
+g:importmap_cdn                                              *g:importmap_cdn*
+    Default: `'esm.sh'`
+    The CDN provider to use when building URLs.
+    Valid options: `'esm.sh'`, `'jsdelivr'`, `'unpkg'`.
+
+g:importmap_prefix_mappings                      *g:importmap_prefix_mappings*
+    Default: `1` (ON)
+    Whether to automatically write trailing-slash prefix mappings (`"pkg/"`)
+    alongside exact package mappings (`"pkg"`).
+
+g:importmap_registry_url                            *g:importmap_registry_url*
+    Default: `'https://registry.npmjs.org'`
+    The base URL for the npm package registry metadata and search APIs.
+
+g:importmap_html_candidates                      *g:importmap_html_candidates*
+    Default: `['index.html', 'public/index.html', 'src/index.html', 'www/index.html']`
+    List of relative paths searched from the project root when finding the
+    target HTML file.
+
+g:importmap_target                                        *g:importmap_target*
+b:importmap_target                                        *b:importmap_target*
+    Default: `''`
+    Explicit path to the target HTML or JSON (`.json`) file containing the import
+    map. When set globally (`g:importmap_target`) or per-buffer
+    (`b:importmap_target`), overrides automatic candidate search.
+
+g:importmap_root_markers                            *g:importmap_root_markers*
+    Default: `['.git', '.hg', 'package.json', 'index.html']`
+    List of markers searched upwards from the current file directory to detect
+    the project root directory.
+
+g:importmap_curl                                            *g:importmap_curl*
+    Default: `'curl'`
+    Path or command name for the `curl` binary used for HTTP requests.
+
+g:importmap_timeout                                      *g:importmap_timeout*
+    Default: `10`
+    Timeout in seconds per HTTP request (`curl --max-time`).
+
+g:importmap_cache_ttl                                  *g:importmap_cache_ttl*
+    Default: `300`
+    Time-to-live in seconds for cached npm registry JSON responses.
+
+g:importmap_cache_dir                                  *g:importmap_cache_dir*
+    Default: `''`
+    Directory for cached registry responses. When empty, a per-user cache
+    path is used (|stdpath()| `('cache')` on Neovim, `$XDG_CACHE_HOME` or
+    `~/.cache` on Vim, plus an `importmap.vim` subdirectory).
+
+g:importmap_indent                                        *g:importmap_indent*
+    Default: `2`
+    Number of spaces per indentation level inside serialized import map JSON.
+
+g:importmap_sync                                            *g:importmap_sync*
+    Default: `0`
+    When set to `1`, forces all asynchronous jobs (network requests, hash
+    computation, package fetches) to run synchronously and block Vim/Neovim
+    until completion. Useful in scripts and batch contexts.
+
+g:importmap_esm_sh_flags                            *g:importmap_esm_sh_flags*
+    Default: `''`
+    Raw query flags appended to `esm.sh` URLs (e.g. `'?bundle'` or `'?dev'`).
+
+g:importmap_openssl                                      *g:importmap_openssl*
+    Default: `'openssl'`
+    Path or command name for the `openssl` binary used by `:ImportMap integrity`.
+
+g:importmap_log                                              *g:importmap_log*
+    Default: `''`
+    When set to a file path, appends timestamped diagnostic logs (requests, cache
+    hits, file mutations) to that file. Never logs raw response bodies.
+
+==============================================================================
+vim:tw=78:ts=8:noet:ft=help:norl:
